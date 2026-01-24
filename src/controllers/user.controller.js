@@ -24,11 +24,13 @@ export const loginUser = async (req, res) => {
   const { email, password } = req.body;
   const existingUser = await User.findOne({ email }).select("+password");
   const userPassword = existingUser?.password;
-  const isMatch = await bcrypt.compare(password, userPassword);
-
-  if (!existingUser || !isMatch) {
+  if (!existingUser) {
     return res.status(401).send("Invalid credentials");
   }
 
+  const isMatch = await bcrypt.compare(password, userPassword);
+  if (!isMatch) {
+    return res.status(401).send("Invalid credentials");
+  }
   res.status(200).send("Logged in Successfully");
 };
