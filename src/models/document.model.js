@@ -2,14 +2,37 @@ import mongoose from "mongoose";
 
 const documentSchema = new mongoose.Schema(
   {
-    userId: {
+    user: {
       type: mongoose.Schema.Types.ObjectId,
       ref: "User",
       required: true,
     },
-    originalName: String,
-    fileUrl: String,
-    cloudinaryId: String,
+
+    originalName: {
+      type: String,
+      required: true,
+    },
+
+    cloudinaryUrl: {
+      type: String,
+      required: true,
+    },
+
+    cloudinaryPublicId: {
+      type: String,
+      required: true,
+    },
+
+    size: {
+      type: Number, // bytes
+      required: true,
+    },
+
+    status: {
+      type: String,
+      enum: ["uploaded", "parsed", "chunked", "ready"],
+      default: "uploaded",
+    },
   },
   { timestamps: true },
 );

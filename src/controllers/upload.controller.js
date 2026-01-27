@@ -1,6 +1,6 @@
 import { cloudinary } from "../config/cloudinary.config.js";
 import streamifier from "streamifier";
-
+import Document from "../models/document.model.js";
 // Helper function to upload buffer to Cloudinary
 const uploadToCloudinary = (buffer, options = {}) => {
   return new Promise((resolve, reject) => {
@@ -33,22 +33,29 @@ export const uploadPDF = async (req, res) => {
       });
     }
 
-    // Upload PDF to Cloudinary
+    // 1. Upload to Cloudinary
     const result = await uploadToCloudinary(req.file.buffer, {
-      folder: "pdf-documents", // Optional: organize files in folders
-      public_id: req.file.originalname.replace(".pdf", ""), // Optional: custom public_id
+      folder: "pdf-documents",
+      public_id: req.file.originalname.replace(".pdf", ""),
     });
 
-    // Response with Cloudinary URL and details
-    res.status(200).json({
+    // 2. Store PDF metadata
+    const document = await Document.create({
+      user: req.user.userId,
+      originalName: req.file.originalname,
+      cloudinaryUrl: result.secure_url,
+      cloudinaryPublicId: result.public_id,
+      size: result.bytes,
+      status: "uploaded",
+    });
+
+    // 3. Respond
+    res.status(201).json({
       success: true,
-      message: "PDF uploaded successfully",
+      message: "PDF uploaded and stored successfully",
       data: {
-        url: result.secure_url,
-        public_id: result.public_id,
-        format: result.format,
-        size: result.bytes,
-        created_at: result.created_at,
+        documentId: document._id,
+        status: document.status,
       },
     });
   } catch (error) {

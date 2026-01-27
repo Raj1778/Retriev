@@ -1,8 +1,13 @@
-// import express from "express";
-// import { uploadPdf } from "../middlewares/upload.middleware.js";
+import express from "express";
+import { authMiddleware } from "../middlewares/auth.middleware.js";
+import {
+  uploadPDF,
+  uploadMultiplePDFs,
+  deletePDF,
+} from "../controllers/upload.controller.js";
+import upload from "../config/multer.config.js";
+const router = express.Router();
 
-// const router = express.Router();
+router.post("/pdf", authMiddleware, upload.single("file"), uploadPDF);
 
-// router.post("/upload", uploadPdf.single("file"), uploadDocument);
-
-// export default router;
+export default router;
