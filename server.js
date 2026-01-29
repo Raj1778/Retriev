@@ -3,7 +3,7 @@ import dotenv from "dotenv";
 import connectDb from "./src/db/db.js";
 import userRouter from "./src/routes/user.routes.js";
 import uploadRouter from "./src/routes/upload.routes.js";
-// import documentRouter from "./src/routes/document.routes.js";
+
 dotenv.config();
 connectDb();
 
@@ -17,7 +17,6 @@ app.get("/", (req, res) => {
 });
 app.use("/api/upload", uploadRouter);
 app.use("/api/user", userRouter);
-// app.use("/api/documents/", documentRouter);
 app.listen(PORT, () => {
   console.log(`Server running on port ${PORT}`);
 });

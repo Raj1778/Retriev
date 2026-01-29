@@ -10,6 +10,7 @@
   "author": "Raj",
   "license": "ISC",
   "dependencies": {
+    "@langchain/textsplitters": "^1.0.1",
     "axios": "^1.13.4",
     "bcrypt": "^6.0.0",
     "cloudinary": "^2.9.0",
@@ -17,6 +18,7 @@
     "express": "^5.2.1",
     "express-router": "^0.0.1",
     "jsonwebtoken": "^9.0.3",
+    "langchain": "^1.2.15",
     "mongoose": "^9.1.5",
     "multer": "^2.0.2",
     "multer-storage-cloudinary": "^2.2.1",

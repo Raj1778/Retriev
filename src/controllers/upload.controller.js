@@ -1,6 +1,12 @@
 import { cloudinary } from "../config/cloudinary.config.js";
 import streamifier from "streamifier";
 import Document from "../models/document.model.js";
+import { createRequire } from "module";
+const require = createRequire(import.meta.url);
+const { PDFParse } = require("pdf-parse");
+import { RecursiveCharacterTextSplitter } from "@langchain/textsplitters";
+
+import DocumentChunk from "../models/documentChunk.model.js";
 // Helper function to upload buffer to Cloudinary
 const uploadToCloudinary = (buffer, options = {}) => {
   return new Promise((resolve, reject) => {
@@ -33,28 +39,61 @@ export const uploadPDF = async (req, res) => {
       });
     }
 
-    // 1. Upload to Cloudinary
+    const parser = new PDFParse({
+      data: req.file.buffer,
+    });
+
+    const parseResult = await parser.getText();
+    await parser.destroy();
+
+    const cleanText = parseResult.text
+      .replace(/\n+/g, "\n")
+      .replace(/\s+/g, " ")
+      .trim();
+
+    if (!cleanText || cleanText.length === 0) {
+      return res.status(400).json({
+        success: false,
+        message: "Failed to extract text from PDF",
+      });
+    }
+    const splitter = new RecursiveCharacterTextSplitter({
+      chunkSize: 1000, // characters (fine for now)
+      chunkOverlap: 200, // ~20% overlap
+    });
+
+    const chunks = await splitter.splitText(cleanText);
+
     const result = await uploadToCloudinary(req.file.buffer, {
       folder: "pdf-documents",
       public_id: req.file.originalname.replace(".pdf", ""),
     });
 
-    // 2. Store PDF metadata
     const document = await Document.create({
       user: req.user.userId,
       originalName: req.file.originalname,
       cloudinaryUrl: result.secure_url,
       cloudinaryPublicId: result.public_id,
       size: result.bytes,
-      status: "uploaded",
+      status: "parsed",
     });
 
-    // 3. Respond
+    const chunkDocs = chunks.map((chunk, index) => ({
+      documentId: document._id,
+      chunkIndex: index,
+      content: chunk,
+    }));
+
+    await DocumentChunk.insertMany(chunkDocs);
+    document.status = "chunked";
+
     res.status(201).json({
       success: true,
-      message: "PDF uploaded and stored successfully",
+      message: "PDF uploaded, parsed and chunked successfully",
       data: {
         documentId: document._id,
+        textLength: cleanText.length,
+        chunkCount: chunks.length,
         status: document.status,
       },
     });
@@ -62,7 +101,7 @@ export const uploadPDF = async (req, res) => {
     console.error("Upload error:", error);
     res.status(500).json({
       success: false,
-      message: "Error uploading PDF",
+      message: "Error uploading and parsing PDF",
       error: error.message,
     });
   }
