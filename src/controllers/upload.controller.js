@@ -1,33 +1,11 @@
-import { cloudinary } from "../config/cloudinary.config.js";
-import streamifier from "streamifier";
 import Document from "../models/document.model.js";
-import { createRequire } from "module";
-const require = createRequire(import.meta.url);
-const { PDFParse } = require("pdf-parse");
-import { RecursiveCharacterTextSplitter } from "@langchain/textsplitters";
-
+import { parsePDFBuffer } from "../services/parsing.service.js";
+import { chunkText } from "../services/chunking.service.js";
+import {
+  uploadToCloudinary,
+  deleteFromCloudinary,
+} from "../services/cloudinary.service.js";
 import DocumentChunk from "../models/documentChunk.model.js";
-// Helper function to upload buffer to Cloudinary
-const uploadToCloudinary = (buffer, options = {}) => {
-  return new Promise((resolve, reject) => {
-    const uploadStream = cloudinary.uploader.upload_stream(
-      {
-        resource_type: "raw", // Use 'raw' for PDF files
-        format: "pdf",
-        ...options,
-      },
-      (error, result) => {
-        if (error) {
-          reject(error);
-        } else {
-          resolve(result);
-        }
-      },
-    );
-
-    streamifier.createReadStream(buffer).pipe(uploadStream);
-  });
-};
 
 // Controller for handling PDF upload
 export const uploadPDF = async (req, res) => {
@@ -39,34 +17,15 @@ export const uploadPDF = async (req, res) => {
       });
     }
 
-    const parser = new PDFParse({
-      data: req.file.buffer,
-    });
+    //pdf parsing
+    const text = await parsePDFBuffer(req.file.buffer);
 
-    const parseResult = await parser.getText();
-    await parser.destroy();
-
-    const cleanText = parseResult.text
-      .replace(/\n+/g, "\n")
-      .replace(/\s+/g, " ")
-      .trim();
-
-    if (!cleanText || cleanText.length === 0) {
-      return res.status(400).json({
-        success: false,
-        message: "Failed to extract text from PDF",
-      });
-    }
-    const splitter = new RecursiveCharacterTextSplitter({
-      chunkSize: 1000, // characters (fine for now)
-      chunkOverlap: 200, // ~20% overlap
-    });
-
-    const chunks = await splitter.splitText(cleanText);
+    //chunking of parsed text
+    const chunks = await chunkText(text);
 
     const result = await uploadToCloudinary(req.file.buffer, {
       folder: "pdf-documents",
-      public_id: req.file.originalname.replace(".pdf", ""),
+      public_id: `${Date.now()}-${req.file.originalname.replace(".pdf", "")}`,
     });
 
     const document = await Document.create({
@@ -86,13 +45,14 @@ export const uploadPDF = async (req, res) => {
 
     await DocumentChunk.insertMany(chunkDocs);
     document.status = "chunked";
+    await document.save();
 
     res.status(201).json({
       success: true,
       message: "PDF uploaded, parsed and chunked successfully",
       data: {
         documentId: document._id,
-        textLength: cleanText.length,
+        textLength: text.length,
         chunkCount: chunks.length,
         status: document.status,
       },
@@ -153,9 +113,7 @@ export const deletePDF = async (req, res) => {
   try {
     const { public_id } = req.params;
 
-    const result = await cloudinary.uploader.destroy(public_id, {
-      resource_type: "raw",
-    });
+    const result = await deleteFromCloudinary(public_id);
 
     res.status(200).json({
       success: result.result === "ok",
