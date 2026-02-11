@@ -20,6 +20,10 @@ const documentChunkSchema = new mongoose.Schema(
       type: String,
       required: true,
     },
+    embedding: {
+      type: [Number], // vector
+      index: false, // we’ll handle similarity in code for now
+    },
 
     // e.g. page number, section, etc.
     metadata: {
