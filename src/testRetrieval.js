@@ -1,8 +1,9 @@
-import mongoose from "mongoose";
 import dotenv from "dotenv";
-import { retrieveTopChunks } from "./services/retrieval.service.js";
-
 dotenv.config();
+import mongoose from "mongoose";
+
+import { retrieveTopChunks } from "./services/retrieval.service.js";
+import { buildPrompt, generateAnswer } from "./services/llm.service.js";
 
 await mongoose.connect(process.env.MONGO_URI);
 
@@ -11,13 +12,14 @@ const run = async () => {
 
   const results = await retrieveTopChunks(question, 3);
 
-  console.log("\nTop Semantic Results:\n");
+  const chunks = results.map((r) => r.chunk);
 
-  results.forEach((item, index) => {
-    console.log(`Rank ${index + 1} | Score: ${item.score.toFixed(4)}\n`);
-    console.log(item.chunk.content);
-    console.log("\n----------------------\n");
-  });
+  const prompt = buildPrompt(chunks, question);
+
+  const answer = await generateAnswer(prompt);
+
+  console.log("\nGenerated Answer:\n");
+  console.log(answer);
 
   process.exit(0);
 };
