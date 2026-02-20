@@ -1,9 +1,16 @@
 import { retrieveTopChunks } from "../services/retrieval.service.js";
 import { buildPrompt, generateAnswer } from "../services/llm.service.js";
+import Chat from "../models/chat.model.js";
+
+const buildChatTitle = (question) => {
+  const trimmed = (question || "").trim().replace(/\s+/g, " ");
+  if (!trimmed) return "New chat";
+  return trimmed.length > 60 ? `${trimmed.slice(0, 60)}…` : trimmed;
+};
 
 export const askQuestion = async (req, res) => {
   try {
-    const { question } = req.body;
+    const { question, chatId } = req.body;
 
     if (!question) {
       return res.status(400).json({
@@ -24,6 +31,41 @@ export const askQuestion = async (req, res) => {
     // 4️⃣ Generate answer
     const answer = await generateAnswer(prompt);
 
+    // 5️⃣ Persist chat history per user/chat
+    const userId = req.user?.userId;
+    let persistedChat = null;
+
+    if (userId) {
+      const now = new Date();
+      const clientChatId = chatId || undefined;
+
+      const baseFilter = clientChatId
+        ? { user: userId, clientChatId }
+        : { user: userId, clientChatId: "__default__" };
+
+      const baseUpdate = {
+        $setOnInsert: {
+          user: userId,
+          clientChatId: clientChatId || "__default__",
+          title: buildChatTitle(question),
+        },
+        $set: { updatedAt: now },
+        $push: {
+          messages: {
+            $each: [
+              { role: "user", content: question, createdAt: now },
+              { role: "assistant", content: answer, createdAt: now },
+            ],
+          },
+        },
+      };
+
+      persistedChat = await Chat.findOneAndUpdate(baseFilter, baseUpdate, {
+        new: true,
+        upsert: true,
+      });
+    }
+
     return res.status(200).json({
       success: true,
       answer,
@@ -31,6 +73,19 @@ export const askQuestion = async (req, res) => {
         documentId: chunk.documentId,
         chunkIndex: chunk.chunkIndex,
       })),
+      chat:
+        persistedChat &&
+        ((chat) => ({
+          id: chat.clientChatId,
+          title: chat.title,
+          updatedAt: chat.updatedAt,
+          messages: (chat.messages || []).map((m) => ({
+            id: m._id.toString(),
+            role: m.role,
+            content: m.content,
+            createdAt: m.createdAt,
+          })),
+        }))(persistedChat),
     });
   } catch (error) {
     console.error("QA Error:", error);

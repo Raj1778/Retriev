@@ -1,9 +1,10 @@
 import express from "express";
-import { askQuestion } from "../controllers/qa.controller.js";
 import { authMiddleware } from "../middlewares/auth.middleware.js";
+import { getUserChats } from "../controllers/chat.controller.js";
 
 const router = express.Router();
 
-router.post("/ask", authMiddleware, askQuestion);
+router.get("/chats", authMiddleware, getUserChats);
 
 export default router;
+
