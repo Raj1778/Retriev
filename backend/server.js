@@ -15,7 +15,7 @@ const app = express();
 
 app.use(
   cors({
-    origin: "http://localhost:3000",
+    origin: ["http://localhost:3000", "https://retriev.vercel.app/"],
     credentials: true,
   }),
 );
@@ -23,7 +23,7 @@ app.use(
 app.use(express.json());
 app.use(express.urlencoded({ extended: true }));
 
-const PORT = process.env.PORT;
+const PORT = process.env.PORT || 5000;
 
 app.get("/", (req, res) => {
   res.send("Welcome to Retriev");
