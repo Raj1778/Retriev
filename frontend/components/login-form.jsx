@@ -101,7 +101,11 @@ export function LoginForm({ className, ...props }) {
                 </Field>
               ) : null}
               <Field>
-                <Button type="submit" disabled={isLoading}>
+                <Button
+                  type="submit"
+                  disabled={isLoading}
+                  className="bg-black rounded-md text-white p-2 cursor-pointer"
+                >
                   {isLoading ? "Logging in..." : "Login"}
                 </Button>
                 <FieldDescription className="text-center">

@@ -1,4 +1,3 @@
-
 "use client";
 
 import { useState } from "react";
@@ -55,13 +54,11 @@ export function SignupForm({ ...props }) {
       setIsSubmitting(true);
       await register({ email, password });
       setSuccessMessage("Account created. You can now log in.");
-      router.push("/login");
+      router.push("/chat");
     } catch (err) {
       const message =
         err?.response?.data?.message ||
-        (typeof err?.response?.data === "string"
-          ? err.response.data
-          : null) ||
+        (typeof err?.response?.data === "string" ? err.response.data : null) ||
         err?.message ||
         "Signup failed. Please try again.";
       setError(message);
@@ -149,7 +146,11 @@ export function SignupForm({ ...props }) {
             ) : null}
             <FieldGroup>
               <Field>
-                <Button type="submit" disabled={isSubmitting} className="w-full">
+                <Button
+                  type="submit"
+                  disabled={isSubmitting}
+                  className="bg-black rounded-md text-white p-2 cursor-pointer"
+                >
                   {isSubmitting ? "Creating account..." : "Create Account"}
                 </Button>
                 <FieldDescription className="px-6 text-center mt-2">
