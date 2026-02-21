@@ -28,7 +28,9 @@ const PORT = process.env.PORT || 5000;
 app.get("/", (req, res) => {
   res.send("Welcome to Retriev");
 });
-
+app.get("/health", (req, res) => {
+  res.status(200).send("OK");
+});
 app.use("/api/upload", uploadRouter);
 app.use("/api/user", userRouter);
 app.use("/api", qaRoutes);
