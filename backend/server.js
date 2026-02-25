@@ -15,7 +15,7 @@ const app = express();
 
 app.use(
   cors({
-    origin: ["http://localhost:3000", "https://retriev.vercel.app/"],
+    origin: ["http://localhost:3000", "https://retriev.vercel.app"],
     credentials: true,
   }),
 );
