@@ -54,7 +54,7 @@ export function SignupForm({ ...props }) {
       setIsSubmitting(true);
       await register({ email, password });
       setSuccessMessage("Account created. You can now log in.");
-      router.push("/chat");
+      router.push("/login");
     } catch (err) {
       const message =
         err?.response?.data?.message ||

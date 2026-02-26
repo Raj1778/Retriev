@@ -30,7 +30,7 @@ const documentSchema = new mongoose.Schema(
 
     status: {
       type: String,
-      enum: ["uploaded", "parsed", "chunked", "ready"],
+      enum: ["uploaded", "parsed", "chunked", "ready", "embedding"],
       default: "uploaded",
     },
   },

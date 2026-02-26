@@ -20,7 +20,8 @@ export const askQuestion = async (req, res) => {
     }
 
     // 1️⃣ Retrieve scored results
-    const results = await retrieveTopChunks(question, 3);
+    const userId = req.user?.userId;
+    const results = await retrieveTopChunks(question, userId, 3);
 
     // 2️⃣ Extract actual chunk documents
     const chunks = results.map((r) => r.chunk);
@@ -32,7 +33,6 @@ export const askQuestion = async (req, res) => {
     const answer = await generateAnswer(prompt);
 
     // 5️⃣ Persist chat history per user/chat
-    const userId = req.user?.userId;
     let persistedChat = null;
 
     if (userId) {

@@ -11,29 +11,25 @@ const cosineSimilarity = (vecA, vecB) => {
   return dot; // embeddings are normalized
 };
 
-export const retrieveTopChunks = async (question, k = 3) => {
+export const retrieveTopChunks = async (question, userId, k = 3) => {
   if (!question) {
     throw new Error("Question is required");
   }
 
-  
   const questionEmbedding = await embedText(question);
 
-  
   const chunks = await DocumentChunk.find({
+    user: userId,
     embedding: { $exists: true },
   });
 
-  
   const scoredChunks = chunks.map((chunk) => {
     const score = cosineSimilarity(questionEmbedding, chunk.embedding);
 
     return { chunk, score };
   });
 
-  
   scoredChunks.sort((a, b) => b.score - a.score);
 
-  
   return scoredChunks.slice(0, k);
 };

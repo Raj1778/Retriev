@@ -6,8 +6,18 @@ import {
   deleteFromCloudinary,
 } from "../services/cloudinary.service.js";
 import DocumentChunk from "../models/documentChunk.model.js";
+import { embedText } from "../services/embedding.service.js";
 
-// Controller for handling PDF upload
+/**
+ * Controller: Upload and Process Single PDF
+ * Flow:
+ * 1. Parse PDF
+ * 2. Chunk text
+ * 3. Upload file to Cloudinary
+ * 4. Create Document entry
+ * 5. Generate embeddings for each chunk (parallel)
+ * 6. Store chunks with embeddings + user isolation
+ */
 export const uploadPDF = async (req, res) => {
   try {
     if (!req.file) {
@@ -17,39 +27,60 @@ export const uploadPDF = async (req, res) => {
       });
     }
 
-    //pdf parsing
+    const userId = req.user?.userId;
+
+    if (!userId) {
+      return res.status(401).json({
+        success: false,
+        message: "Unauthorized",
+      });
+    }
+
+    // 1️⃣ Parse PDF
     const text = await parsePDFBuffer(req.file.buffer);
 
-    //chunking of parsed text
+    // 2️⃣ Chunk parsed text
     const chunks = await chunkText(text);
 
-    const result = await uploadToCloudinary(req.file.buffer, {
+    // 3️⃣ Upload original PDF to Cloudinary
+    const cloudinaryResult = await uploadToCloudinary(req.file.buffer, {
       folder: "pdf-documents",
       public_id: `${Date.now()}-${req.file.originalname.replace(".pdf", "")}`,
     });
 
+    // 4️⃣ Create Document entry
     const document = await Document.create({
-      user: req.user.userId,
+      user: userId,
       originalName: req.file.originalname,
-      cloudinaryUrl: result.secure_url,
-      cloudinaryPublicId: result.public_id,
-      size: result.bytes,
-      status: "parsed",
+      cloudinaryUrl: cloudinaryResult.secure_url,
+      cloudinaryPublicId: cloudinaryResult.public_id,
+      size: cloudinaryResult.bytes,
+      status: "embedding", // now entering embedding phase
     });
 
+    // 5️⃣ Generate embeddings in parallel
+    const embeddingPromises = chunks.map((chunk) => embedText(chunk));
+    const embeddings = await Promise.all(embeddingPromises);
+
+    // 6️⃣ Prepare chunk documents with embeddings
     const chunkDocs = chunks.map((chunk, index) => ({
+      user: userId,
       documentId: document._id,
       chunkIndex: index,
       content: chunk,
+      embedding: embeddings[index],
     }));
 
+    // 7️⃣ Insert all chunks into DB
     await DocumentChunk.insertMany(chunkDocs);
-    document.status = "chunked";
+
+    // 8️⃣ Mark document ready
+    document.status = "ready";
     await document.save();
 
-    res.status(201).json({
+    return res.status(201).json({
       success: true,
-      message: "PDF uploaded, parsed and chunked successfully",
+      message: "PDF uploaded, embedded and stored successfully",
       data: {
         documentId: document._id,
         textLength: text.length,
@@ -59,15 +90,19 @@ export const uploadPDF = async (req, res) => {
     });
   } catch (error) {
     console.error("Upload error:", error);
-    res.status(500).json({
+
+    return res.status(500).json({
       success: false,
-      message: "Error uploading and parsing PDF",
+      message: "Error uploading and processing PDF",
       error: error.message,
     });
   }
 };
 
-// Optional: Controller for multiple PDF uploads
+/**
+ * Controller: Upload Multiple PDFs (Upload Only - No Embedding)
+ * This is optional and currently does NOT embed.
+ */
 export const uploadMultiplePDFs = async (req, res) => {
   try {
     if (!req.files || req.files.length === 0) {
@@ -80,7 +115,7 @@ export const uploadMultiplePDFs = async (req, res) => {
     const uploadPromises = req.files.map(async (file) => {
       const result = await uploadToCloudinary(file.buffer, {
         folder: "pdf-documents",
-        public_id: file.originalname.replace(".pdf", ""),
+        public_id: `${Date.now()}-${file.originalname.replace(".pdf", "")}`,
       });
 
       return {
@@ -93,14 +128,15 @@ export const uploadMultiplePDFs = async (req, res) => {
 
     const results = await Promise.all(uploadPromises);
 
-    res.status(200).json({
+    return res.status(200).json({
       success: true,
       message: "PDFs uploaded successfully",
       data: results,
     });
   } catch (error) {
     console.error("Upload error:", error);
-    res.status(500).json({
+
+    return res.status(500).json({
       success: false,
       message: "Error uploading PDFs",
       error: error.message,
@@ -108,14 +144,16 @@ export const uploadMultiplePDFs = async (req, res) => {
   }
 };
 
-// Optional: Delete PDF from Cloudinary
+/**
+ * Controller: Delete PDF from Cloudinary
+ */
 export const deletePDF = async (req, res) => {
   try {
     const { public_id } = req.params;
 
     const result = await deleteFromCloudinary(public_id);
 
-    res.status(200).json({
+    return res.status(200).json({
       success: result.result === "ok",
       message:
         result.result === "ok"
@@ -125,7 +163,8 @@ export const deletePDF = async (req, res) => {
     });
   } catch (error) {
     console.error("Delete error:", error);
-    res.status(500).json({
+
+    return res.status(500).json({
       success: false,
       message: "Error deleting PDF",
       error: error.message,
