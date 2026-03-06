@@ -16,6 +16,11 @@ const run = async () => {
 
   const prompt = buildPrompt(chunks, question);
 
+  if (!prompt) {
+    console.log("No context available; skipping LLM call.");
+    process.exit(0);
+  }
+
   const answer = await generateAnswer(prompt);
 
   console.log("\nGenerated Answer:\n");

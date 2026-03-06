@@ -36,6 +36,13 @@ const chatSchema = new mongoose.Schema(
       default: "New chat",
     },
     messages: [messageSchema],
+    // optional list of document IDs whose chunks are relevant to this chat
+    documentIds: [
+      {
+        type: mongoose.Schema.Types.ObjectId,
+        ref: "Document",
+      },
+    ],
   },
   {
     timestamps: true,

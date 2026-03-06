@@ -3,12 +3,18 @@ import OpenAI from "openai";
 export const buildPrompt = (chunks, question) => {
   const context = chunks.map((c) => c.content).join("\n\n");
 
-  return `
-You are a helpful assistant.
+  // if context is empty we want to short-circuit before calling the LLM
+  if (!context.trim()) {
+    return null;
+  }
 
-Answer the question using ONLY the context provided below.
-If the answer is not contained in the context, say:
-"I don't know based on the provided documents."
+  return `You are a factual assistant. You MUST answer using ONLY the context below.
+
+CRITICAL RULES:
+1. ONLY use information explicitly stated in the Context section
+2. Do NOT infer, assume, or add external knowledge
+3. If information is missing, respond: "I don't have information about this in the provided documents"
+4. Quote directly when possible
 
 Context:
 ${context}
@@ -16,8 +22,8 @@ ${context}
 Question:
 ${question}
 
-Answer:
-`;
+You must cite which part of the context your answer comes from.
+Answer:`;
 };
 
 export const generateAnswer = async (prompt) => {
@@ -29,7 +35,7 @@ export const generateAnswer = async (prompt) => {
   const completion = await client.chat.completions.create({
     model: "llama-3.1-8b-instant",
     messages: [{ role: "user", content: prompt }],
-    temperature: 0.2,
+    temperature: 0.2, 
   });
 
   return completion.choices[0].message.content;
