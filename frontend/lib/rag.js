@@ -13,8 +13,9 @@ export async function uploadPdf(file) {
   return response.data;
 }
 
-export async function askQuestion(question, chatId) {
-  const payload = chatId ? { question, chatId } : { question };
+export async function askQuestion(question, chatId, scope = "all") {
+  const payload = { question, scope };
+  if (chatId) payload.chatId = chatId;
   const response = await apiClient.post("/api/ask", payload);
   return response.data;
 }

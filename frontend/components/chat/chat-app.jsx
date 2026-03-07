@@ -240,6 +240,8 @@ export default function ChatApp() {
   const [showSettings, setShowSettings] = useState(false);
   const [chatToDelete, setChatToDelete] = useState(null);
   const [hoveredChatId, setHoveredChatId] = useState(null);
+  const [retrievalScope, setRetrievalScope] = useState("all");
+  const [isClient, setIsClient] = useState(false);
 
   const fileInputRef = useRef(null);
   const textareaRef = useRef(null);
@@ -249,6 +251,11 @@ export default function ChatApp() {
     () => chats.find((c) => c.id === activeChatId) || null,
     [chats, activeChatId],
   );
+
+  // Set client flag
+  useEffect(() => {
+    setIsClient(true);
+  }, []);
 
   // Close mobile sidebar on resize
   useEffect(() => {
@@ -594,14 +601,16 @@ export default function ChatApp() {
         {(isMobile || sidebarOpen) && (
           <AvatarChip
             icon={UserCircle}
-            label={(() => {
-              if (typeof window !== "undefined") {
-                const n = localStorage.getItem("displayName");
-                if (n) return n;
-              }
-              return userEmail || "Signed in";
-            })()}
-            sublabel={userEmail ? "Retriev account" : ""}
+            label={
+              isClient
+                ? (() => {
+                    const n = localStorage.getItem("displayName");
+                    if (n) return n;
+                    return userEmail ? userEmail.split("@")[0] : "Signed in";
+                  })()
+                : "Loading..."
+            }
+            sublabel={isClient ? (userEmail ? "Retriev account" : "") : ""}
           />
         )}
         <Button
@@ -767,6 +776,30 @@ export default function ChatApp() {
             }}
           >
             <div className="mx-auto w-full max-w-3xl">
+              {/* Retrieval Scope Selection */}
+              <div className="mb-3 flex items-center gap-2">
+                <label className="text-xs text-zinc-400">Search in:</label>
+                <div className="flex gap-1">
+                  {[
+                    { value: "all", label: "All Documents" },
+                    { value: "current", label: "Documents in this Chat" },
+                  ].map((option) => (
+                    <button
+                      key={option.value}
+                      onClick={() => setRetrievalScope(option.value)}
+                      className={cn(
+                        "rounded-xl px-3 py-1 text-xs font-medium transition-colors",
+                        retrievalScope === option.value
+                          ? "bg-zinc-800 text-zinc-50"
+                          : "text-zinc-400 hover:text-zinc-200",
+                      )}
+                    >
+                      {option.label}
+                    </button>
+                  ))}
+                </div>
+              </div>
+
               {uploadedFileName && (
                 <div className="mb-3 flex items-center justify-between rounded-2xl border border-zinc-700 bg-zinc-900 px-3 py-2 text-sm text-zinc-100">
                   <div className="flex min-w-0 items-center gap-2">

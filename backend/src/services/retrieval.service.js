@@ -14,7 +14,7 @@ const cosineSimilarity = (vecA, vecB) => {
 export const retrieveTopChunks = async (
   question,
   userId,
-  k = 3,
+  k = 20,
   documentIds = null, // optional list of document objectIds to restrict search
 ) => {
   if (!question) {

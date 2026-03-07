@@ -69,6 +69,12 @@ export const uploadPDF = async (req, res) => {
       chunkIndex: index,
       content: chunk,
       embedding: embeddings[index],
+      //adding metadata for accurate retrieval
+      metadata: {
+        documentName: req.file.originalname,
+        chunkIndex: index,
+        uploadedAt: new Date(),
+      },
     }));
 
     // 7️⃣ Insert all chunks into DB

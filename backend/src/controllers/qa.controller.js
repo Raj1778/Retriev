@@ -1,5 +1,5 @@
 import { retrieveTopChunks } from "../services/retrieval.service.js";
-import { buildPrompt, generateAnswer } from "../services/llm.service.js";
+import { ask } from "../services/llm.service.js";
 import Chat from "../models/chat.model.js";
 
 const buildChatTitle = (question) => {
@@ -10,7 +10,7 @@ const buildChatTitle = (question) => {
 
 export const askQuestion = async (req, res) => {
   try {
-    const { question, chatId, documentIds } = req.body; // documentIds optional array of ObjectId strings
+    const { question, chatId, scope = "all", documentIds } = req.body; // scope: "all", "current", "selected"
 
     if (!question) {
       return res.status(400).json({
@@ -19,17 +19,34 @@ export const askQuestion = async (req, res) => {
       });
     }
 
-    // 1️⃣ Retrieve scored results
+    // 1️⃣ Determine filter document IDs based on scope
     const userId = req.user?.userId;
-    // pass documentIds from request or, if answering within an existing chat, the chat's stored documentIds
-    let filterDocIds = documentIds;
-    if (chatId && !filterDocIds) {
-      // load chat to see if it already has documentIds saved
-      const existing = await Chat.findOne({ user: userId, clientChatId: chatId }).lean();
-      if (existing && Array.isArray(existing.documentIds) && existing.documentIds.length > 0) {
+    let filterDocIds = null;
+
+    if (scope === "current" && chatId) {
+      // For current, use the chat's associated documentIds
+      const existing = await Chat.findOne({
+        user: userId,
+        clientChatId: chatId,
+      }).lean();
+      if (
+        existing &&
+        Array.isArray(existing.documentIds) &&
+        existing.documentIds.length > 0
+      ) {
         filterDocIds = existing.documentIds;
+      } else {
+        // No documents in this chat
+        return res.status(200).json({
+          success: true,
+          answer:
+            "No documents uploaded in this chat. Please upload a document first to ask questions about it.",
+          sources: [],
+          chat: null,
+        });
       }
     }
+    // For "all" or invalid scope, filterDocIds remains null
 
     const results = await retrieveTopChunks(question, userId, 3, filterDocIds);
 
@@ -48,11 +65,20 @@ export const askQuestion = async (req, res) => {
       });
     }
 
-    // 3️⃣ Build prompt
-    const prompt = buildPrompt(chunks, question);
+    // 3️⃣ Get chat history for context
+    let chatHistory = [];
+    if (chatId) {
+      const existingChat = await Chat.findOne({
+        user: userId,
+        clientChatId: chatId,
+      }).lean();
+      if (existingChat && existingChat.messages) {
+        chatHistory = existingChat.messages;
+      }
+    }
 
-    // 4️⃣ Generate answer
-    const answer = await generateAnswer(prompt);
+    // 4️⃣ Generate answer with context
+    const { answer, usage } = await ask(chunks, question, chatHistory);
 
     // 5️⃣ Persist chat history per user/chat
     let persistedChat = null;
@@ -94,6 +120,8 @@ export const askQuestion = async (req, res) => {
       sources: chunks.map((chunk) => ({
         documentId: chunk.documentId,
         chunkIndex: chunk.chunkIndex,
+        documentName: chunk.metadata?.documentName,
+        length: chunk.metadata?.length,
       })),
       chat:
         persistedChat &&
