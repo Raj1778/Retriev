@@ -1,6 +1,5 @@
 import OpenAI from "openai";
 
-// ─── Prompt Builder ───────────────────────────────────────────────────────────
 
 export const buildPrompt = (chunks, question, chatHistory = []) => {
   const context = chunks
