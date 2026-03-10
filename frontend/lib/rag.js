@@ -1,12 +1,16 @@
 import apiClient from "./apiClient";
 
-export async function uploadPdf(file) {
+export async function uploadPdf(file, chatId = null) {
   const formData = new FormData();
   formData.append("file", file);
+  // include chatId so backend can link document to a chat
+  if (chatId) {
+    formData.append("chatId", chatId);
+  }
 
   const response = await apiClient.post("/api/upload/pdf", formData, {
     headers: {
-      "Content-Type": "multipart/form-data",
+      "Content-Type": "multipart/m-data",
     },
   });
 

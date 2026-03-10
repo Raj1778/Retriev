@@ -1,4 +1,5 @@
 import Document from "../models/document.model.js";
+import Chat from "../models/chat.model.js";
 import { parsePDFBuffer } from "../services/parsing.service.js";
 import { chunkText } from "../services/chunking.service.js";
 import {
@@ -8,68 +9,46 @@ import {
 import DocumentChunk from "../models/documentChunk.model.js";
 import { embedText } from "../services/embedding.service.js";
 
-/**
- * Controller: Upload and Process Single PDF
- * Flow:
- * 1. Parse PDF
- * 2. Chunk text
- * 3. Upload file to Cloudinary
- * 4. Create Document entry
- * 5. Generate embeddings for each chunk (parallel)
- * 6. Store chunks with embeddings + user isolation
- */
 export const uploadPDF = async (req, res) => {
   try {
-    if (!req.file) {
-      return res.status(400).json({
-        success: false,
-        message: "No file uploaded",
-      });
-    }
+    if (!req.file)
+      return res
+        .status(400)
+        .json({ success: false, message: "No file uploaded" });
 
     const userId = req.user?.userId;
+    if (!userId)
+      return res.status(401).json({ success: false, message: "Unauthorized" });
 
-    if (!userId) {
-      return res.status(401).json({
-        success: false,
-        message: "Unauthorized",
-      });
-    }
+    const { chatId } = req.body; // ← grab chatId from frontend
 
-    // 1️⃣ Parse PDF
     const text = await parsePDFBuffer(req.file.buffer);
-
-    // 2️⃣ Chunk parsed text
     const chunks = await chunkText(text);
 
-    // 3️⃣ Upload original PDF to Cloudinary
     const cloudinaryResult = await uploadToCloudinary(req.file.buffer, {
       folder: "pdf-documents",
       public_id: `${Date.now()}-${req.file.originalname.replace(".pdf", "")}`,
     });
 
-    // 4️⃣ Create Document entry
     const document = await Document.create({
       user: userId,
       originalName: req.file.originalname,
       cloudinaryUrl: cloudinaryResult.secure_url,
       cloudinaryPublicId: cloudinaryResult.public_id,
       size: cloudinaryResult.bytes,
-      status: "embedding", // now entering embedding phase
+      status: "embedding",
     });
 
-    // 5️⃣ Generate embeddings in parallel
-    const embeddingPromises = chunks.map((chunk) => embedText(chunk));
-    const embeddings = await Promise.all(embeddingPromises);
+    const embeddings = await Promise.all(
+      chunks.map((chunk) => embedText(chunk)),
+    );
 
-    // 6️⃣ Prepare chunk documents with embeddings
     const chunkDocs = chunks.map((chunk, index) => ({
       user: userId,
       documentId: document._id,
       chunkIndex: index,
       content: chunk,
       embedding: embeddings[index],
-      //adding metadata for accurate retrieval
       metadata: {
         documentName: req.file.originalname,
         chunkIndex: index,
@@ -77,16 +56,30 @@ export const uploadPDF = async (req, res) => {
       },
     }));
 
-    // 7️⃣ Insert all chunks into DB
     await DocumentChunk.insertMany(chunkDocs);
 
-    // 8️⃣ Mark document ready
     document.status = "ready";
     await document.save();
 
+    // ✅ Link document to chat if chatId was provided
+    if (chatId) {
+      await Chat.findOneAndUpdate(
+        { user: userId, clientChatId: chatId },
+        {
+          $addToSet: { documentIds: document._id }, // addToSet avoids duplicates
+          $setOnInsert: {
+            user: userId,
+            clientChatId: chatId,
+            title: req.file.originalname,
+          },
+        },
+        { upsert: true },
+      );
+    }
+
     return res.status(201).json({
       success: true,
-      message: "PDF uploaded, embedded and stored successfully",
+      message: "PDF uploaded and processed successfully",
       data: {
         documentId: document._id,
         textLength: text.length,
@@ -96,10 +89,9 @@ export const uploadPDF = async (req, res) => {
     });
   } catch (error) {
     console.error("Upload error:", error);
-
     return res.status(500).json({
       success: false,
-      message: "Error uploading and processing PDF",
+      message: "Error uploading PDF",
       error: error.message,
     });
   }

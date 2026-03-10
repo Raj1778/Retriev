@@ -413,7 +413,8 @@ export default function ChatApp() {
       let qaData = null;
 
       if (hasFile && fileToUpload) {
-        uploadData = await uploadPdf(fileToUpload);
+        // pass chat id so backend can attach document to this chat
+        uploadData = await uploadPdf(fileToUpload, activeChatId);
         updateChat(activeChatId, (chat) => ({
           ...chat,
           updatedAt: Date.now(),
@@ -425,7 +426,7 @@ export default function ChatApp() {
         }));
       }
 
-      if (text) qaData = await askQuestion(text, activeChatId);
+      if (text) qaData = await askQuestion(text, activeChatId, retrievalScope);
 
       let finalText = qaData
         ? typeof qaData === "string"
@@ -782,7 +783,8 @@ export default function ChatApp() {
                 <div className="flex gap-1">
                   {[
                     { value: "all", label: "All Documents" },
-                    { value: "current", label: "Documents in this Chat" },
+                    { value: "chat", label: "Documents in this Chat" },
+                    { value: "last20", label: "Last 20 Uploads" },
                   ].map((option) => (
                     <button
                       key={option.value}

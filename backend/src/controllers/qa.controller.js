@@ -1,141 +1,69 @@
-import { retrieveTopChunks } from "../services/retrieval.service.js";
-import { ask } from "../services/llm.service.js";
-import Chat from "../models/chat.model.js";
+import {
+  getFilterDocIds,
+  getChatHistory,
+  persistChat,
+  formatChat,
+} from "../services/chat.service.js";
+import { runQAPipeline } from "../services/qa.service.js";
 
-const buildChatTitle = (question) => {
-  const trimmed = (question || "").trim().replace(/\s+/g, " ");
-  if (!trimmed) return "New chat";
-  return trimmed.length > 60 ? `${trimmed.slice(0, 60)}…` : trimmed;
+const NO_DOCS_MESSAGES = {
+  chat: "No documents uploaded in this chat. Upload a PDF first, then ask your question.",
+  last20: "You have no processed documents yet. Upload a PDF to get started.",
+  all: "No documents found. Please upload a PDF first.",
 };
 
 export const askQuestion = async (req, res) => {
   try {
-    const { question, chatId, scope = "all", documentIds } = req.body; // scope: "all", "current", "selected"
+    const { question, chatId, scope = "all" } = req.body;
+    const userId = req.user?.userId;
 
     if (!question) {
-      return res.status(400).json({
-        success: false,
-        message: "Question is required",
-      });
+      return res
+        .status(400)
+        .json({ success: false, message: "Question is required" });
     }
 
-    // 1️⃣ Determine filter document IDs based on scope
-    const userId = req.user?.userId;
-    let filterDocIds = null;
-
-    if (scope === "current" && chatId) {
-      // For current, use the chat's associated documentIds
-      const existing = await Chat.findOne({
-        user: userId,
-        clientChatId: chatId,
-      }).lean();
-      if (
-        existing &&
-        Array.isArray(existing.documentIds) &&
-        existing.documentIds.length > 0
-      ) {
-        filterDocIds = existing.documentIds;
-      } else {
-        // No documents in this chat
-        return res.status(200).json({
-          success: true,
-          answer:
-            "No documents uploaded in this chat. Please upload a document first to ask questions about it.",
-          sources: [],
-          chat: null,
-        });
-      }
-    }
-    // For "all" or invalid scope, filterDocIds remains null
-
-    const results = await retrieveTopChunks(question, userId, 3, filterDocIds);
-
-    // 2️⃣ Extract actual chunk documents
-    const chunks = results.map((r) => r.chunk);
-
-    // If we didn't retrieve any chunks, there's no context to answer from
-    if (chunks.length === 0) {
-      const noContextAnswer =
-        "I don't have any documents or relevant information to answer that question. Please upload or index some documents first.";
+    // 1. Resolve document filter
+    const filterDocIds = await getFilterDocIds(scope, chatId, userId);
+    if (filterDocIds === "NO_DOCS") {
       return res.status(200).json({
         success: true,
-        answer: noContextAnswer,
+        answer: NO_DOCS_MESSAGES[scope] ?? NO_DOCS_MESSAGES.all,
         sources: [],
         chat: null,
       });
     }
 
-    // 3️⃣ Get chat history for context
-    let chatHistory = [];
-    if (chatId) {
-      const existingChat = await Chat.findOne({
-        user: userId,
-        clientChatId: chatId,
-      }).lean();
-      if (existingChat && existingChat.messages) {
-        chatHistory = existingChat.messages;
-      }
-    }
+    // 2. Get chat history
+    const chatHistory = await getChatHistory(chatId, userId);
 
-    // 4️⃣ Generate answer with context
-    const { answer, usage } = await ask(chunks, question, chatHistory);
+    // 3. Run RAG pipeline
+    const { answer, sources } = await runQAPipeline({
+      question,
+      userId,
+      filterDocIds,
+      chatHistory,
+    });
 
-    // 5️⃣ Persist chat history per user/chat
-    let persistedChat = null;
-
-    if (userId) {
-      const now = new Date();
-      const clientChatId = chatId || undefined;
-
-      const baseFilter = clientChatId
-        ? { user: userId, clientChatId }
-        : { user: userId, clientChatId: "__default__" };
-
-      const baseUpdate = {
-        $setOnInsert: {
-          user: userId,
-          clientChatId: clientChatId || "__default__",
-          title: buildChatTitle(question),
-        },
-        $set: { updatedAt: now },
-        $push: {
-          messages: {
-            $each: [
-              { role: "user", content: question, createdAt: now },
-              { role: "assistant", content: answer, createdAt: now },
-            ],
-          },
-        },
-      };
-
-      persistedChat = await Chat.findOneAndUpdate(baseFilter, baseUpdate, {
-        new: true,
-        upsert: true,
+    if (!answer) {
+      return res.status(200).json({
+        success: true,
+        answer: "I couldn't find relevant information to answer that question.",
+        sources: [],
+        chat: null,
       });
     }
+
+    // 4. Persist & respond
+    const persistedChat = userId
+      ? await persistChat({ userId, chatId, question, answer })
+      : null;
 
     return res.status(200).json({
       success: true,
       answer,
-      sources: chunks.map((chunk) => ({
-        documentId: chunk.documentId,
-        chunkIndex: chunk.chunkIndex,
-        documentName: chunk.metadata?.documentName,
-        length: chunk.metadata?.length,
-      })),
-      chat:
-        persistedChat &&
-        ((chat) => ({
-          id: chat.clientChatId,
-          title: chat.title,
-          updatedAt: chat.updatedAt,
-          messages: (chat.messages || []).map((m) => ({
-            id: m._id.toString(),
-            role: m.role,
-            content: m.content,
-            createdAt: m.createdAt,
-          })),
-        }))(persistedChat),
+      sources,
+      chat: persistedChat ? formatChat(persistedChat) : null,
     });
   } catch (error) {
     console.error("QA Error:", error);
