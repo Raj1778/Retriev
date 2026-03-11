@@ -11,7 +11,7 @@ export const getFilterDocIds = async (scope, chatId, userId) => {
       clientChatId: chatId,
     }).lean();
     if (!chat?.documentIds?.length) return "NO_DOCS";
-    return chat.documentIds; // ✅ actual ObjectIds
+    return chat.documentIds; // actual ObjectIds
   }
 
   // Scope: "last20" → last 20 docs uploaded by this user
@@ -75,3 +75,23 @@ export const formatChat = (chat) => ({
     createdAt: m.createdAt,
   })),
 });
+
+export const linkDocumentToChat = async (
+  userId,
+  chatId,
+  documentId,
+  fallbackTitle,
+) => {
+  return Chat.findOneAndUpdate(
+    { user: userId, clientChatId: chatId },
+    {
+      $addToSet: { documentIds: documentId },
+      $setOnInsert: {
+        user: userId,
+        clientChatId: chatId,
+        title: fallbackTitle,
+      },
+    },
+    { upsert: true },
+  );
+};

@@ -7,7 +7,7 @@ export const runQAPipeline = async ({
   filterDocIds,
   chatHistory,
 }) => {
-  const results = await retrieveTopChunks(question, userId, 3, filterDocIds);
+  const results = await retrieveTopChunks(question, userId, 20, filterDocIds);
   const chunks = results.map((r) => r.chunk);
 
   if (chunks.length === 0) return { answer: null, chunks: [] };
